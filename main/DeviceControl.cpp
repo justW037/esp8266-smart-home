@@ -1,8 +1,5 @@
 #include "DeviceControl.h"
-#include <Arduino.h>
-#include "WebSocketConnection.h"
-#include <DHT.h>
-#include <ArduinoJson.h>
+
 
 #define DHTPIN D4
 #define DHTTYPE DHT11
@@ -15,11 +12,38 @@ const int NUM_LEDS = sizeof(LED_PINS) / sizeof(LED_PINS[0]);
 void initDeviceControl() {
   dht.begin();
 
-
   for (int i = 0; i < NUM_LEDS; i++) {
     pinMode(LED_PINS[i], OUTPUT);
     digitalWrite(LED_PINS[i], LOW); 
   }
+
+  DynamicJsonDocument doc = readCommandsFromFile("/commands.json");
+  if (doc.isNull()) {
+    Serial.println("No data to process.");
+    return; 
+  }
+  JsonArray arr = doc.as<JsonArray>();
+  for (JsonObject obj : arr) {
+        const char* command = obj["command"];
+        const char* deviceId = obj["device_id"];
+        const char*  portStr = obj["port"];
+        uint8_t port = getPortFromString(portStr);
+        // Kiểm tra giá trị của command
+        if (strcmp(command, "on") == 0) {
+            Serial.print("Turning on device: ");
+            Serial.print(deviceId);
+            Serial.print(" on port: ");
+            Serial.println(port);
+            turnOnDevice(port); 
+        } else {
+            Serial.print("Turning off device: ");
+            Serial.print(deviceId);
+            Serial.print(" on port: ");
+            Serial.println(port);
+            turnOffDevice(port); 
+        }
+  }
+
 }
 
 
@@ -99,3 +123,23 @@ void sendSensorData() {
   }
 
 }
+
+void sendCommandsFromFile(const char* filePath) {
+
+    DynamicJsonDocument commandsDoc = readCommandsFromFile(filePath);
+    JsonArray arr = commandsDoc.as<JsonArray>();
+
+    for (JsonObject commandObj : arr) {
+        DynamicJsonDocument messageDoc(256);
+        messageDoc["device_id"] = commandObj["device_id"];
+        messageDoc["port"] = commandObj["port"];
+        messageDoc["command"] = commandObj["command"];
+        
+        String message;
+        serializeJson(messageDoc, message);
+
+        webSocket.sendTXT(message);
+    }
+}
+
+
